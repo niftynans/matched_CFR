@@ -63,5 +63,3 @@ class MLP(nn.Module):
     def forward(self, x):
         out = self.regression(x)
         return  out
-
- 
