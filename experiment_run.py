@@ -82,59 +82,63 @@ def run_experiment(cfg: DictConfig):
             X_train,
             y_train,
             t_train,
+            ite_train,
             X_test,
             y_test,
             t_test,
+            ite_test
         ) = fetch_sample_data(
             random_state=cfg["random_state"], test_size=0.25, StandardScaler=cfg["StandardScaler"], data_path=hydra.utils.get_original_cwd() + "/data/sample_data.csv", dataset= args.dataset
         )
+    
         model = CFR(in_dim=X_train.shape[1], out_dim=1, cfg=cfg)
         opt = getattr(optim, 'Adam')
 
         if args.algorithm == 'fish':
             within_result, outof_result, train_mse, ipm_result = model.train_fish(
-                dataloader, X_train, y_train, t_train, X_test, y_test, t_test, logger, opt)
+                dataloader, X_train, y_train, t_train, X_test, y_test, t_test, logger, opt, ite_train, ite_test)
                 
         else:
             within_result, outof_result, train_mse, ipm_result = model.fit(
-            dataloader, X_train, y_train, t_train, X_test, y_test, t_test, logger)
-        
+            dataloader, X_train, y_train, t_train, X_test, y_test, t_test, logger, ite_train, ite_test)
+    
         
         within_ipm = ipm_scores(model, X_train, t_train, sig=0.1)
         outof_ipm = ipm_scores(model, X_test, t_test, sig=0.1)
+
         
-        fig, (ax1, ax2) = plt.subplots(2, sharex=True)
-        ax1.bar(range(len(within_result)), list(within_result.values()), align='center')
-        ax1.set_xticks(range(len(within_result)), list(within_result.keys()))
-        for i, v in enumerate(within_result.values()):
-            ax1.text(range(len(within_result))[i] - 0.25, v + 0.01, str(v))
-        ax1.set_title('within_sample')
+        # fig, (ax1, ax2) = plt.subplots(2, sharex=True)
+        # ax1.bar(range(len(within_result)), list(within_result.values()), align='center')
+        # ax1.set_xticks(range(len(within_result)), list(within_result.keys()))
+        # for i, v in enumerate(within_result.values()):
+        #     ax1.text(range(len(within_result))[i] - 0.25, v + 0.01, str(v))
+        # ax1.set_title('within_sample')
         
-        ax2.bar(range(len(outof_result)), list(outof_result.values()), align='center')
-        ax2.set_xticks(range(len(outof_result)), list(outof_result.keys()))
-        for i, v in enumerate(outof_result.values()):
-            ax2.text(range(len(outof_result))[i] - 0.25, v + 0.01, str(v))
-        ax2.set_title('outof_sample')
+        # ax2.bar(range(len(outof_result)), list(outof_result.values()), align='center')
+        # ax2.set_xticks(range(len(outof_result)), list(outof_result.keys()))
+        # for i, v in enumerate(outof_result.values()):
+        #     ax2.text(range(len(outof_result))[i] - 0.25, v + 0.01, str(v))
+        # ax2.set_title('outof_sample')
         
-        # model-fish-confounding-x_t-name
-        try:
-            os.mkdir('result_imgs')
-        except:
-            pass
+        # # model-fish-confounding-x_t-name
+        # try:
+        #     os.mkdir('result_imgs')
+        # except:
+        #     pass
         # fig.savefig('result_imgs/CFRNet_fish_confounding_age.png')
         
-        # log_param("within_IPM_pre", within_ipm["ipm_lin_before"])
-        # log_param("outof_IPM_pre", outof_ipm["ipm_lin_before"])
+        log_param("within_IPM_pre", within_ipm["ipm_lin_before"])
+        log_param("outof_IPM_pre", outof_ipm["ipm_lin_before"])
 
-        # log_metric("within_ATT", within_result["ATT"])
-        # log_metric("within_ATTerror", np.abs(within_result["ATT"] - 1676.3426))
-        # log_metric("within_RMSE", within_result["RMSE"])
-        # log_metric("within_IPM", within_ipm["ipm_lin"])
+        log_metric("within_ATT", within_result["ATT"])
+        log_metric("within_ATTerror", np.abs(within_result["ATT"] - 1676.3426))
+        log_metric("within_RMSE", within_result["RMSE"])
+        log_metric("within_IPM", within_ipm["ipm_lin"])
 
-        # log_metric("outof_ATT", outof_result["ATT"])
-        # log_metric("outof_ATTerror", np.abs(outof_result["ATT"] - 1676.3426))
-        # log_metric("outof_RMSE", outof_result["RMSE"])
-        # log_metric("outof_IPM", outof_ipm["ipm_lin"])
+        log_metric("outof_ATT", outof_result["ATT"])
+        log_metric("outof_ATTerror", np.abs(outof_result["ATT"] - 1676.3426))
+        log_metric("outof_RMSE", outof_result["RMSE"])
+        log_metric("outof_IPM", outof_ipm["ipm_lin"])            
 
 if __name__ == "__main__":
     run_experiment()

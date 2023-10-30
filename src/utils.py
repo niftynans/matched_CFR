@@ -139,6 +139,7 @@ def fetch_sample_data(random_state=0, test_size=0.15, StandardScaler=False, data
         ihdp_data_compressed, variable_dict, true_ate = ihdp_data_prep()
         x_t = get_x_t(ihdp_data_compressed, variable_dict, x_t_name)
         ihdp_data_compressed['e_1'] = get_environments(x_t,ihdp_data_compressed['treatment'].to_numpy().reshape(-1,1),1, number_environments)
+        ite = ihdp_data_compressed['ite']
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         treatments = ihdp_data_compressed['treatment']        
         torch_data = ihdp_data_compressed.drop(columns = ['y_cfactual', 'y_factual', 'ite', 'treatment'])
@@ -154,10 +155,11 @@ def fetch_sample_data(random_state=0, test_size=0.15, StandardScaler=False, data
         num_features = torch_data.shape[1]
         torch_labels = ihdp_data_compressed['y_factual']
         
-        X_train, X_test, y_train, y_test, t_train, t_test = train_test_split(
+        X_train, X_test, y_train, y_test, t_train, t_test, ite_train, ite_test = train_test_split(
             torch_data,
             torch_labels,
             treatments,
+            ite,
             random_state=random_state,
             test_size=test_size)
         
@@ -169,22 +171,27 @@ def fetch_sample_data(random_state=0, test_size=0.15, StandardScaler=False, data
         X_train, y_train = np.array(X_train), np.array(y_train)
         t_train, t_test = np.array(t_train), np.array(t_test)
         X_test, y_test = np.array(X_test), np.array(y_test)
+        ite_train, ite_test = np.array(ite_train), np.array(ite_test)
+        
         
         X_train = torch.FloatTensor(X_train)
         y_train = torch.FloatTensor(y_train).unsqueeze(1)
         t_train = torch.FloatTensor(t_train).unsqueeze(1)
+        ite_train = torch.FloatTensor(ite_train).unsqueeze(1)
 
         X_test = torch.FloatTensor(X_test)
         y_test = torch.FloatTensor(y_test).unsqueeze(1)
         t_test = torch.FloatTensor(t_test).unsqueeze(1)
+        ite_test = torch.FloatTensor(ite_test).unsqueeze(1)
 
         # print(X_train.size(), y_train.size(), t_train.size())
         # print(X_test.size(), y_test.size(), t_test.size())
         
-    dataset = TD_DataSet(X_train, y_train, t_train)
+    dataset = TD_DataSet(X_train, y_train, t_train, ite_train)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=16, shuffle=True, drop_last=True)
 
-    return  dataloader, X_train, y_train, t_train, X_test, y_test, t_test
+    return  dataloader, X_train, y_train, t_train, ite_train, X_test, y_test, t_test, ite_test
+
 
 def mmd_rbf(Xt, Xc, p, sig=0.1):
     sig = torch.tensor(sig)

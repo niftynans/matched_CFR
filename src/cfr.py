@@ -76,12 +76,13 @@ def fish_step(meta_weights, inner_weights, meta_lr):
     meta_weights += meta_lr * sum([weights - meta_weights], 0 * meta_weights)
     return meta_weights
 
-def get_score(model, x_test, y_test, t_test):
+def get_score(model, x_test, y_test, t_test, ite = None, t_learner = False):
     if torch.cuda.is_available():
         device = torch.device("cuda")
     else:
         device = torch.device("cpu")
-
+    
+    # print(x_test.size(), y_test.size(), t_test.size(), t_learner)
     N = len(x_test)
 
     # MSE
@@ -96,7 +97,12 @@ def get_score(model, x_test, y_test, t_test):
     _t0 = torch.FloatTensor([0 for _ in range(N)]).reshape([-1, 1])
     _t1 = torch.FloatTensor([1 for _ in range(N)]).reshape([-1, 1])
 
-    # _cate = model.forward(x_test, _t1) - model.forward(x_test, _t0)
+    if t_learner:
+        
+        return _ypred, y_test, mse
+        
+    pehe_t1 = model.forward(x_test, _t1) - model.forward(x_test, _t0)
+    pehe = torch.sqrt(torch.mean(torch.square(pehe_t1 - ite)))
     _cate_t = y_test - model.forward(x_test, _t0)
     _cate_c = model.forward(x_test, _t1) - y_test
     _cate = torch.cat([_cate_c[c_idx], _cate_t[t_idx]])
@@ -104,7 +110,7 @@ def get_score(model, x_test, y_test, t_test):
     _ate = np.mean(_cate.to("cpu").detach().numpy().copy())
     _att = np.mean(_cate_t[t_idx].to("cpu").detach().numpy().copy())
 
-    return {"ATE": _ate, "ATT": _att, "RMSE": np.sqrt(mse)}
+    return {"ATE": _ate, "ATT": _att, "RMSE": np.sqrt(mse), "PEHE": pehe}
 
 
 class Base(nn.Module):
@@ -124,12 +130,13 @@ class Base(nn.Module):
         y_test,
         t_test,
         logger,
+        ite_train,
+        ite_test
     ):
-        print("In fit!")
         losses = []
         ipm_result = []
         logger.debug("                          within sample,      out of sample")
-        logger.debug("           [Train MSE, IPM], [RMSE, ATT, ATE], [RMSE, ATT, ATE]")
+        logger.debug("           [Train MSE, IPM], [RMSE, ATT, ATE, PEHE], [RMSE, ATT, ATE, PEHE]")
         for epoch in range(self.cfg["epochs"]):
             epoch_loss = 0
             epoch_ipm = []
@@ -207,10 +214,10 @@ class Base(nn.Module):
 
             if epoch % 100 == 0:
                 with torch.no_grad():
-                    within_result = get_score(self, x_train, y_train, t_train)
-                    outof_result = get_score(self, x_test, y_test, t_test)
+                    within_result = get_score(self, x_train, y_train, t_train, ite_train)
+                    outof_result = get_score(self, x_test, y_test, t_test, ite_test)
                 logger.debug(
-                    "[Epoch: %d] [%.3f, %.3f], [%.3f, %.3f, %.3f], [%.3f, %.3f, %.3f] "
+                    "[Epoch: %d] [%.3f, %.3f], [%.3f, %.3f, %.3f, %.3f], [%.3f, %.3f, %.3f, %.3f] "
                     % (
                         epoch,
                         epoch_loss,
@@ -218,9 +225,11 @@ class Base(nn.Module):
                         within_result["RMSE"],
                         within_result["ATT"],
                         within_result["ATE"],
+                        within_result["PEHE"],
                         outof_result["RMSE"],
                         outof_result["ATT"],
                         outof_result["ATE"],
+                        outof_result["PEHE"]
                     )
                 )
 
@@ -235,14 +244,16 @@ class Base(nn.Module):
         y_test,
         t_test,
         logger,
-        opt):
+        opt,
+        ite_train,
+        ite_test):
         
         print("In train fish!")
         losses = []
         ipm_result = []
         logger.debug("                                     FISH Training           ")
         logger.debug("                          within sample,      out of sample")
-        logger.debug("           [Train MSE, IPM], [RMSE, ATT, ATE], [RMSE, ATT, ATE]")
+        logger.debug("           [Train MSE, IPM], [RMSE, ATT, ATE, PEHE], [RMSE, ATT, ATE, PEHE]")
         self.train()
         
         for epoch in range(self.cfg["epochs"]):
@@ -287,15 +298,18 @@ class Base(nn.Module):
                     _c_id = np.where((z.cpu().detach().numpy() == 0).all(axis=1))[0]
                     # print(_t_id, _c_id)
 
-                    y_hat_treated = self.outnet_treated(x_rep[_t_id])
-                    y_hat_control = self.outnet_control(x_rep[_c_id])
-                    # print(y_hat_control.size(), y_hat_treated.size())
-                    
-                    _index = np.argsort(np.concatenate([_t_id, _c_id], 0))
+                    if self.cfg["split_outnet"]:
+                        y_hat_treated = self.outnet_treated(x_rep[_t_id])
+                        y_hat_control = self.outnet_control(x_rep[_c_id])
 
-                    y_hat = torch.cat([y_hat_treated, y_hat_control])[_index]
-                    criterion = nn.MSELoss(reduction='none')
+                        _index = np.argsort(np.concatenate([_t_id, _c_id], 0))
+
+                        y_hat = torch.cat([y_hat_treated, y_hat_control])[_index]
                     
+                    else:
+                        y_hat = self.outnet(torch.cat((x_rep, z), 1))
+                        
+                    criterion = nn.MSELoss(reduction='none')
                     loss = criterion(y_hat, y.reshape([-1,1]))
 
                     p_t = np.mean(z.cpu().detach().numpy())
@@ -357,28 +371,101 @@ class Base(nn.Module):
                         dataloader.dataset.batches_left[domain] - 1 \
                         if dataloader.dataset.batches_left[domain] > 1 else 1
             
-            if epoch % 100 == 0:
-                with torch.no_grad():
-                    within_result = get_score(self, x_train, y_train, t_train)
-                    outof_result = get_score(self, x_test, y_test, t_test)
-                logger.debug(
-                    "[Epoch: %d] [%.3f, %.3f], [%.3f, %.3f, %.3f], [%.3f, %.3f, %.3f] "
-                    % (
-                        epoch,
-                        epoch_loss,
-                        ipm if self.cfg["alpha"] > 0 else -1,
-                        within_result["RMSE"],
-                        within_result["ATT"],
-                        within_result["ATE"],
-                        outof_result["RMSE"],
-                        outof_result["ATT"],
-                        outof_result["ATE"],
-                    )
-                )
-
+                    if epoch % 100 == 0:
+                        with torch.no_grad():
+                            within_result = get_score(self, x_train, y_train, t_train, ite_train)
+                            outof_result = get_score(self, x_test, y_test, t_test, ite_test)
+                        logger.debug(
+                            "[Epoch: %d] [%.3f, %.3f], [%.3f, %.3f, %.3f, %.3f], [%.3f, %.3f, %.3f, %.3f] "
+                            % (
+                                epoch,
+                                epoch_loss,
+                                ipm if self.cfg["alpha"] > 0 else -1,
+                                within_result["RMSE"],
+                                within_result["ATT"],
+                                within_result["ATE"],
+                                within_result["PEHE"],
+                                outof_result["RMSE"],
+                                outof_result["ATT"],
+                                outof_result["ATE"],
+                                within_result["PEHE"],
+                            )
+                        )
+                
         return within_result, outof_result, losses, ipm_result
                 
 
+    def train_tlearner(self,
+        dataloader,
+        x_train,
+        y_train,
+        t_train,
+        x_test,
+        y_test,
+        t_test,
+        opt,
+    ):
+        losses = [] 
+        self.train()
+        for epoch in range(self.cfg["epochs"]):
+            epoch_loss = 0
+            n = 0
+            dataloader.dataset.reset_batch()
+            i = 0
+            opt_inner_pre = None
+            while sum([l > 1 for l in dataloader.dataset.batches_left.values()]) >= 3: 
+                i += 1
+                domains = sample_domains(dataloader, 3).tolist()
+                model_inner = deepcopy(self)
+                model_inner.train()
+                opt_inner = opt(model_inner.parameters(), lr = 0.001)
+                if opt_inner_pre is not None:
+                    opt_inner.load_state_dict(opt_inner_pre)
+                for domain in domains:
+                    data = dataloader.dataset.get_batch(domain)
+                    x = data[0].to(device=torch.device("cpu"))
+                    y = data[1].to(device=torch.device("cpu"))
+                    z = data[2].to(device=torch.device("cpu")) 
+                    e = data[3].to(device=torch.device("cpu")).unsqueeze(1) 
+                    opt_inner.zero_grad()
+                    x_rep = self.repnet(x)
+                    # _t_id = np.where((z.cpu().detach().numpy() == 1).all(axis=1))[0]
+                    # _c_id = np.where((z.cpu().detach().numpy() == 0).all(axis=1))[0]
+                    y_hat = self.outnet(torch.cat((x_rep, z), 1))    
+                    criterion = nn.MSELoss(reduction='none')
+                    loss = criterion(y_hat, y.reshape([-1,1]))
+                    p_t = np.mean(z.cpu().detach().numpy())
+                    w_t = z/(2*p_t)
+                    w_c = (1-z)/(2*1-p_t)
+                    sample_weight = w_t + w_c
+                    if (p_t ==1) or (p_t ==0):
+                        sample_weight = 1
+                    loss =torch.mean((loss * sample_weight))
+                    loss.backward()
+                    opt_inner.step()    
+                    mse = mean_squared_error(y_hat.detach().cpu().numpy(),y.reshape([-1, 1]).detach().cpu().numpy())
+                    epoch_loss += mse * y.shape[0]
+                    n += y.shape[0]
+                StepLR(opt_inner, step_size=10, gamma=0.97)
+                epoch_loss = epoch_loss / (n)
+                losses.append(epoch_loss)
+                opt_inner_pre = opt_inner.state_dict()
+                meta_weights = fish_step(meta_weights=self.state_dict(),
+                                        inner_weights=model_inner.state_dict(),
+                                        meta_lr=0.015 / 3)    
+                self.reset_weights(meta_weights)
+                for domain in domains:
+                    dataloader.dataset.batches_left[domain] = \
+                        dataloader.dataset.batches_left[domain] - 1 \
+                        if dataloader.dataset.batches_left[domain] > 1 else 1
+            
+            if epoch % 100 == 0:
+                with torch.no_grad():
+                    within_result = get_score(self, x_train, y_train, t_train, t_learner=True)
+                    outof_result = get_score(self, x_test, y_test, t_test, t_learner=True)
+
+        return within_result, outof_result
+        
 class CFR(Base):
     def __init__(self, in_dim, out_dim, cfg={}):
         super().__init__(cfg)
