@@ -40,7 +40,7 @@ parser = argparse.ArgumentParser()
 
 parser = argparse.ArgumentParser(description='Treatment Effect Estimation using Gradient Matching.')
 parser.add_argument('--dataset', type=str, help="Name of dataset: ihdp, jobs", default='ihdp')
-parser.add_argument('--algorithm', type=str, help="Training scheme: fish, erm", default='fish')
+parser.add_argument('--algorithm', type=str, help="Training scheme: fish, erm", default='erm')
 args = parser.parse_args()
 
 @hydra.main(config_path="configs", config_name="experiments.yaml", version_base=None)

@@ -81,14 +81,11 @@ def get_score(model, x_test, y_test, t_test, ite = None, t_learner = False):
         device = torch.device("cuda")
     else:
         device = torch.device("cpu")
-    
-    # print(x_test.size(), y_test.size(), t_test.size(), t_learner)
     N = len(x_test)
 
     # MSE
     _ypred = model.forward(x_test, t_test)
     mse = mean_squared_error(y_test, _ypred)
-
     # treatment index
     t_idx = np.where(t_test.to("cpu").detach().numpy().copy() == 1)[0]
     c_idx = np.where(t_test.to("cpu").detach().numpy().copy() == 0)[0]
@@ -321,8 +318,8 @@ class Base(nn.Module):
                     
                     loss =torch.mean((loss * sample_weight))
                     
-                    loss.backward()
-                    opt_inner.step()
+                    # loss.backward()
+                    # opt_inner.step()
                     
                     if self.cfg["alpha"] > 0.0:    
                         if self.cfg["ipm_type"] == "mmd_rbf":
@@ -349,15 +346,20 @@ class Base(nn.Module):
                             y_hat.detach().cpu().numpy(),
                             y.reshape([-1, 1]).detach().cpu().numpy(),
                         )
+                    
+                    loss.backward()
+                    opt_inner.step()
+                    self.optimizer.step()
                     epoch_loss += mse * y.shape[0]
                     n += y.shape[0]
+                    
+                # StepLR(opt_inner, step_size=10, gamma=0.97)
+                self.scheduler.step()
+                epoch_loss = epoch_loss / n
+                losses.append(epoch_loss)
 
-                StepLR(opt_inner, step_size=10, gamma=0.97)
-                epoch_loss = epoch_loss / (n)
-                
                 if self.cfg["alpha"] > 0:
                     ipm_result.append(np.mean(epoch_ipm))
-                losses.append(epoch_loss)
                 opt_inner_pre = opt_inner.state_dict()
                 # fish update
                 meta_weights = fish_step(meta_weights=self.state_dict(),
@@ -371,27 +373,27 @@ class Base(nn.Module):
                         dataloader.dataset.batches_left[domain] - 1 \
                         if dataloader.dataset.batches_left[domain] > 1 else 1
             
-                    if epoch % 100 == 0:
-                        with torch.no_grad():
-                            within_result = get_score(self, x_train, y_train, t_train, ite_train)
-                            outof_result = get_score(self, x_test, y_test, t_test, ite_test)
-                        logger.debug(
-                            "[Epoch: %d] [%.3f, %.3f], [%.3f, %.3f, %.3f, %.3f], [%.3f, %.3f, %.3f, %.3f] "
-                            % (
-                                epoch,
-                                epoch_loss,
-                                ipm if self.cfg["alpha"] > 0 else -1,
-                                within_result["RMSE"],
-                                within_result["ATT"],
-                                within_result["ATE"],
-                                within_result["PEHE"],
-                                outof_result["RMSE"],
-                                outof_result["ATT"],
-                                outof_result["ATE"],
-                                within_result["PEHE"],
-                            )
-                        )
-                
+            if epoch % 100 == 0:
+                with torch.no_grad():
+                    within_result = get_score(self, x_train, y_train, t_train, ite_train)
+                    outof_result = get_score(self, x_test, y_test, t_test, ite_test)
+                logger.debug(
+                    "[Epoch: %d] [%.3f, %.3f], [%.3f, %.3f, %.3f, %.3f], [%.3f, %.3f, %.3f, %.3f] "
+                    % (
+                        epoch,
+                        epoch_loss,
+                        ipm if self.cfg["alpha"] > 0 else -1,
+                        within_result["RMSE"],
+                        within_result["ATT"],
+                        within_result["ATE"],
+                        within_result["PEHE"],
+                        outof_result["RMSE"],
+                        outof_result["ATT"],
+                        outof_result["ATE"],
+                        within_result["PEHE"],
+                    )
+                )
+            
         return within_result, outof_result, losses, ipm_result
                 
 

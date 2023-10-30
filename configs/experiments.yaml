@@ -1,5 +1,6 @@
 alpha: 0.0
 # alpha: 10000000
+# epochs: 1
 epochs: 1000
 gamma: 0.97
 ipm_type: mmd_lin
