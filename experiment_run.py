@@ -90,7 +90,7 @@ def run_experiment(cfg: DictConfig):
         ) = fetch_sample_data(
             random_state=cfg["random_state"], test_size=0.25, StandardScaler=cfg["StandardScaler"], data_path=hydra.utils.get_original_cwd() + "/data/sample_data.csv", dataset= args.dataset
         )
-    
+
         model = CFR(in_dim=X_train.shape[1], out_dim=1, cfg=cfg)
         opt = getattr(optim, 'Adam')
 

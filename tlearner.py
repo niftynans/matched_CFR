@@ -80,7 +80,7 @@ def main(cfg: DictConfig):
         # print(locals()[f't_train_{group}'].size(), locals()[f't_test_{group}'].size()) 
         
         dataset = TD_DataSet(locals()[f'X_train_{group}'], locals()[f'y_train_{group}'], locals()[f't_train_{group}'])
-        locals()[f'dataloader_{group}'] = torch.utils.data.DataLoader(dataset, batch_size=16, shuffle=True, drop_last=True)
+        locals()[f'dataloader_{group}'] = torch.utils.data.DataLoader(dataset, batch_size=50, shuffle=True, drop_last=True)
 
         model = CFR(in_dim=locals()[f'X_train_{group}'].shape[1], out_dim=1, cfg=cfg)
         opt = getattr(optim, 'Adam')

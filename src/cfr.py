@@ -138,14 +138,17 @@ class Base(nn.Module):
             epoch_loss = 0
             epoch_ipm = []
             n = 0
+            a = 0
             for (x, y, z) in dataloader:
                 x = x.to(device=torch.device("cpu"))
                 y = y.to(device=torch.device("cpu"))
                 z = z.to(device=torch.device("cpu"))
-
+                
+                print(x.size(), y.size(), z.size())
+                
                 self.optimizer.zero_grad()
-
                 x_rep = self.repnet(x)
+                
 
                 _t_id = np.where((z.cpu().detach().numpy() == 1).all(axis=1))[0]
                 _c_id = np.where((z.cpu().detach().numpy() == 0).all(axis=1))[0]
@@ -174,12 +177,12 @@ class Base(nn.Module):
 
                 if self.cfg["alpha"] > 0.0:    
                     if self.cfg["ipm_type"] == "mmd_rbf":
-                       ipm = mmd_rbf(
-                            x_rep[_t_id],
-                            x_rep[_c_id],
-                            p=len(_t_id) / (len(_t_id) + len(_c_id)),
-                            sig=self.cfg["sig"],
-                        )
+                        ipm = mmd_rbf(
+                                x_rep[_t_id],
+                                x_rep[_c_id],
+                                p=len(_t_id) / (len(_t_id) + len(_c_id)),
+                                sig=self.cfg["sig"],
+                            )
                     elif self.cfg["ipm_type"] == "mmd_lin":
                         ipm = mmd_lin(
                             x_rep[_t_id],
@@ -192,6 +195,7 @@ class Base(nn.Module):
 
                     loss += ipm * self.cfg["alpha"]
                     epoch_ipm.append(ipm.cpu().detach().numpy())
+                    
                 
                 mse = self.mse(
                         y_hat.detach().cpu().numpy(),
@@ -209,8 +213,9 @@ class Base(nn.Module):
             if self.cfg["alpha"] > 0:
                 ipm_result.append(np.mean(epoch_ipm))
 
-            if epoch % 100 == 0:
+            if epoch % 1 == 0:
                 with torch.no_grad():
+                    
                     within_result = get_score(self, x_train, y_train, t_train, ite_train)
                     outof_result = get_score(self, x_test, y_test, t_test, ite_test)
                 logger.debug(
@@ -245,7 +250,6 @@ class Base(nn.Module):
         ite_train,
         ite_test):
         
-        print("In train fish!")
         losses = []
         ipm_result = []
         logger.debug("                                     FISH Training           ")
@@ -284,6 +288,8 @@ class Base(nn.Module):
                     z = data[2].to(device=torch.device("cpu")) # Treatments
                     e = data[3].to(device=torch.device("cpu")).unsqueeze(1) # Domains
                     
+                    print(x.size(), y.size(), z.size())
+
                     # print(z.unique(return_counts = True))
                     # print(e.unique(return_counts = True))
 
@@ -299,6 +305,15 @@ class Base(nn.Module):
                         y_hat_treated = self.outnet_treated(x_rep[_t_id])
                         y_hat_control = self.outnet_control(x_rep[_c_id])
 
+                        if y_hat_treated.isnan().any():
+                            print('Check 1a: y_hat corrupt')
+                            # break
+                        
+                        
+                        if y_hat_control.isnan().any():
+                            print('Check 1b: y_hat corrupt')
+                            # break
+                        
                         _index = np.argsort(np.concatenate([_t_id, _c_id], 0))
 
                         y_hat = torch.cat([y_hat_treated, y_hat_control])[_index]
@@ -306,6 +321,10 @@ class Base(nn.Module):
                     else:
                         y_hat = self.outnet(torch.cat((x_rep, z), 1))
                         
+                    
+                    if y_hat.isnan().any():
+                        print('Check 2: y_hat corrupt')
+                        # break
                     criterion = nn.MSELoss(reduction='none')
                     loss = criterion(y_hat, y.reshape([-1,1]))
 
@@ -317,9 +336,6 @@ class Base(nn.Module):
                         sample_weight = 1
                     
                     loss =torch.mean((loss * sample_weight))
-                    
-                    # loss.backward()
-                    # opt_inner.step()
                     
                     if self.cfg["alpha"] > 0.0:    
                         if self.cfg["ipm_type"] == "mmd_rbf":
@@ -341,14 +357,14 @@ class Base(nn.Module):
 
                         loss += ipm * self.cfg["alpha"]
                         epoch_ipm.append(ipm.cpu().detach().numpy())
-                        
+                    
                     mse = mean_squared_error(
                             y_hat.detach().cpu().numpy(),
                             y.reshape([-1, 1]).detach().cpu().numpy(),
                         )
                     
                     loss.backward()
-                    opt_inner.step()
+                    # opt_inner.step()
                     self.optimizer.step()
                     epoch_loss += mse * y.shape[0]
                     n += y.shape[0]
@@ -373,7 +389,7 @@ class Base(nn.Module):
                         dataloader.dataset.batches_left[domain] - 1 \
                         if dataloader.dataset.batches_left[domain] > 1 else 1
             
-            if epoch % 100 == 0:
+            if epoch % 1 == 0:
                 with torch.no_grad():
                     within_result = get_score(self, x_train, y_train, t_train, ite_train)
                     outof_result = get_score(self, x_test, y_test, t_test, ite_test)
@@ -528,7 +544,7 @@ class CFR(Base):
                 y_hat = self.outnet(torch.cat((x_rep, z), 1))
 
         return y_hat
-
+    
     def reset_weights(self, weights):
         self.load_state_dict(deepcopy(weights))
         

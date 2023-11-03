@@ -27,7 +27,7 @@ def torch_fix_seed(seed=0):
 
 
 class TD_DataSet(Dataset):
-    def __init__(self, x, y, z, batch_size = 16):
+    def __init__(self, x, y, z, batch_size = 50):
         self.x = x
         self.y = y
         self.z = z
@@ -40,7 +40,7 @@ class TD_DataSet(Dataset):
         self.domains = domains
         self.targets = y
         self.train_data = x
-        self.batch_size = 16
+        self.batch_size = 50
 
     def reset_batch(self):
         """Reset batch indices for each domain."""
@@ -53,7 +53,7 @@ class TD_DataSet(Dataset):
         """Return the next batch of the specified domain."""
         batch_index = self.batch_indices[domain][len(self.batch_indices[domain]) - self.batches_left[domain]]
         return torch.stack([self.get_input(i) for i in batch_index]), \
-               self.targets[batch_index], self.z[batch_index],self.domains[batch_index]
+            self.targets[batch_index], self.z[batch_index],self.domains[batch_index]
 
     def get_input(self, idx):
         """Returns x for a given idx."""
@@ -133,7 +133,7 @@ def fetch_sample_data(random_state=0, test_size=0.15, StandardScaler=False, data
         # print(X_test.size(), y_test.size(), t_test.size())
 
     else:
-        confounding = False
+        confounding = True
         x_t_name = 'birth-weight'
         number_environments = 3
         ihdp_data_compressed, variable_dict, true_ate = ihdp_data_prep()
@@ -145,10 +145,10 @@ def fetch_sample_data(random_state=0, test_size=0.15, StandardScaler=False, data
         torch_data = ihdp_data_compressed.drop(columns = ['y_cfactual', 'y_factual', 'ite', 'treatment'])
         torch_data = torch_data.drop(columns = [variable_dict[x_t_name]])
         if confounding:
-            a = randrange(1, int(torch_data.shape[1]/5))
+            a = randrange(1, int(torch_data.shape[1]/20)+1)
             feats = []
             for i in range(a):
-                feats.append(randrange(torch_data.shape[1]))
+                feats.append(randrange(6))
             feats = list(set(feats))
             torch_data = torch_data.drop(columns=torch_data.columns[feats])
 
@@ -188,7 +188,8 @@ def fetch_sample_data(random_state=0, test_size=0.15, StandardScaler=False, data
         # print(X_test.size(), y_test.size(), t_test.size())
         
     dataset = TD_DataSet(X_train, y_train, t_train, ite_train)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=16, shuffle=True, drop_last=True)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=50, shuffle=True, drop_last=True)
+    # Batch_Size: 50. Otherwise, it gives NaN values.
 
     return  dataloader, X_train, y_train, t_train, ite_train, X_test, y_test, t_test, ite_test
 

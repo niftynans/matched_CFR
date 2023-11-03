@@ -39,7 +39,6 @@ class MLP(nn.Module):
         layers.extend(self._layer(hidden_dim, out_dim, False))
 
         self.regression = nn.Sequential(*layers)
-
         # init
         for m in self.modules():
             if isinstance(m, nn.Linear):
