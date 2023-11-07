@@ -1,8 +1,6 @@
-alpha: 10000000
-# alpha: 0
+# alpha: 10000000
+alpha: 0
 epochs: 1000
-# 20 for Fish and CFR -- exploding gradient
-# 1000 for Erm
 gamma: 0.97
 ipm_type: mmd_lin
 lr: 0.001

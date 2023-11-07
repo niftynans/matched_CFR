@@ -33,7 +33,7 @@ from pathlib import Path
 
 @hydra.main(config_path="configs", config_name="experiments.yaml", version_base=None)
 def main(cfg: DictConfig):
-    x_t_name = 'birth-weight'
+    x_t_name = 'head-circumference'
     number_environments = 3
     ihdp_data_compressed, variable_dict, true_ate = ihdp_data_prep()
 
@@ -47,6 +47,9 @@ def main(cfg: DictConfig):
 
     treatments_control = ihdp_control['treatment']
     treatments_treated = ihdp_treated['treatment']      
+    
+    ite_control = ihdp_control['ite']
+    ite_treated = ihdp_treated['ite']
 
     torch_data_control = ihdp_control.drop(columns = ['y_cfactual', 'y_factual', 'ite', 'treatment']) 
     torch_data_control = torch_data_control.drop(columns = [variable_dict[x_t_name]])
@@ -61,37 +64,38 @@ def main(cfg: DictConfig):
     torch_labels_treated = ihdp_treated['y_factual']
 
     for group in ['control', 'treated']:
-        locals()[f'X_train_{group}'], locals()[f'X_test_{group}'], locals()[f'y_train_{group}'], locals()[f'y_test_{group}'], locals()[f't_train_{group}'], locals()[f't_test_{group}'] = train_test_split(
+        locals()[f'X_train_{group}'], locals()[f'X_test_{group}'], locals()[f'y_train_{group}'], locals()[f'y_test_{group}'], locals()[f't_train_{group}'], locals()[f't_test_{group}'], locals()[f'ite_train_{group}'], locals()[f'ite_test_{group}'] = train_test_split(
                     locals()[f'torch_data_{group}'],
                     locals()[f'torch_labels_{group}'],
                     locals()[f'treatments_{group}'],
+                    locals()[f'ite_{group}'],
                     test_size=0.15)
 
         locals()[f'X_train_{group}'], locals()[f'X_test_{group}'] = np.array(locals()[f'X_train_{group}']), np.array(locals()[f'X_test_{group}'])
         locals()[f'y_train_{group}'], locals()[f'y_test_{group}'] = np.array(locals()[f'y_train_{group}']), np.array(locals()[f'y_test_{group}'])
         locals()[f't_train_{group}'], locals()[f't_test_{group}'] = np.array(locals()[f't_train_{group}']), np.array(locals()[f't_test_{group}'])
+        locals()[f'ite_train_{group}'], locals()[f'ite_test_{group}'] = np.array(locals()[f'ite_train_{group}']), np.array(locals()[f'ite_test_{group}'])
         
         locals()[f'X_train_{group}'], locals()[f'X_test_{group}'] = torch.FloatTensor(locals()[f'X_train_{group}']), torch.FloatTensor(locals()[f'X_test_{group}'])
         locals()[f'y_train_{group}'], locals()[f'y_test_{group}'] = torch.FloatTensor(locals()[f'y_train_{group}']).unsqueeze(1), torch.FloatTensor(locals()[f'y_test_{group}']).unsqueeze(1)
         locals()[f't_train_{group}'], locals()[f't_test_{group}'] = torch.FloatTensor(locals()[f't_train_{group}']).unsqueeze(1), torch.FloatTensor(locals()[f't_test_{group}']).unsqueeze(1)
+        locals()[f'ite_train_{group}'], locals()[f'ite_test_{group}'] = torch.FloatTensor(locals()[f'ite_train_{group}']).unsqueeze(1), torch.FloatTensor(locals()[f'ite_test_{group}']).unsqueeze(1)
         
         # print(locals()[f'X_train_{group}'].size(), locals()[f'X_test_{group}'].size())
         # print(locals()[f'y_train_{group}'].size(), locals()[f'y_test_{group}'].size())
         # print(locals()[f't_train_{group}'].size(), locals()[f't_test_{group}'].size()) 
         
-        dataset = TD_DataSet(locals()[f'X_train_{group}'], locals()[f'y_train_{group}'], locals()[f't_train_{group}'])
+        dataset = TD_DataSet(locals()[f'X_train_{group}'], locals()[f'y_train_{group}'], locals()[f't_train_{group}'], locals()[f'ite_train_{group}'])
         locals()[f'dataloader_{group}'] = torch.utils.data.DataLoader(dataset, batch_size=50, shuffle=True, drop_last=True)
 
         model = CFR(in_dim=locals()[f'X_train_{group}'].shape[1], out_dim=1, cfg=cfg)
         opt = getattr(optim, 'Adam')
 
-        locals()[f'within_result_{group}'], locals()[f'outof_result_{group}'] = model.train_tlearner(
-                locals()[f'dataloader_{group}'], locals()[f'X_train_{group}'], locals()[f'y_train_{group}'], locals()[f't_train_{group}'], locals()[f'X_test_{group}'], locals()[f'y_test_{group}'], locals()[f't_test_{group}'], opt)
-        
-        print("MSE Within Sample: ",locals()[f'within_result_{group}'][2])   
-        print("MSE Outof  Sample: ",locals()[f'outof_result_{group}'][2] )                
-        # print("ATE Within Sample: ",locals()[f'within_result_{group}']['mse'])
-        # print("ATE Outof  Sample: ",locals()[f'outof_result_{group}']['mse'])
+        for i in range(10):
+            locals()[f'within_result_{group}'], locals()[f'outof_result_{group}'] = model.train_tlearner(
+                    locals()[f'dataloader_{group}'], locals()[f'X_train_{group}'], locals()[f'y_train_{group}'], locals()[f't_train_{group}'], locals()[f'ite_train_{group}'], locals()[f'X_test_{group}'], locals()[f'y_test_{group}'], locals()[f't_test_{group}'], locals()[f'ite_test_{group}'], opt, i)
+
+            
 
 if __name__ == '__main__':
     main()

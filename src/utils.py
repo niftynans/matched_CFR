@@ -27,7 +27,7 @@ def torch_fix_seed(seed=0):
 
 
 class TD_DataSet(Dataset):
-    def __init__(self, x, y, z, batch_size = 50):
+    def __init__(self, x, y, z, batch_size = 16):
         self.x = x
         self.y = y
         self.z = z
@@ -40,7 +40,7 @@ class TD_DataSet(Dataset):
         self.domains = domains
         self.targets = y
         self.train_data = x
-        self.batch_size = 50
+        self.batch_size = 16
 
     def reset_batch(self):
         """Reset batch indices for each domain."""
@@ -145,7 +145,7 @@ def fetch_sample_data(random_state=0, test_size=0.15, StandardScaler=False, data
         torch_data = ihdp_data_compressed.drop(columns = ['y_cfactual', 'y_factual', 'ite', 'treatment'])
         torch_data = torch_data.drop(columns = [variable_dict[x_t_name]])
         if confounding:
-            a = randrange(1, int(torch_data.shape[1]/20)+1)
+            a = randrange(1, int(torch_data.shape[1]/5)+1)
             feats = []
             for i in range(a):
                 feats.append(randrange(6))
@@ -188,7 +188,7 @@ def fetch_sample_data(random_state=0, test_size=0.15, StandardScaler=False, data
         # print(X_test.size(), y_test.size(), t_test.size())
         
     dataset = TD_DataSet(X_train, y_train, t_train, ite_train)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=50, shuffle=True, drop_last=True)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=16, shuffle=True, drop_last=True)
     # Batch_Size: 50. Otherwise, it gives NaN values.
 
     return  dataloader, X_train, y_train, t_train, ite_train, X_test, y_test, t_test, ite_test
@@ -207,7 +207,8 @@ def mmd_rbf(Xt, Xc, p, sig=0.1):
     mmd += p ** 2 / (n * (n-1)) * (Ktt.sum() - n)
     mmd -= 2 * p * (1 - p) / (m * n) * Kct.sum()
     mmd *= 4
-
+    if mmd.isnan():
+        mmd = torch.tensor(0)
     return mmd
 
 def mmd_lin(Xt, Xc, p):
@@ -215,7 +216,8 @@ def mmd_lin(Xt, Xc, p):
     mean_control = torch.mean(Xc)
     
     mmd = torch.square(2.0*p*mean_treated - 2.0*(1.0-p)*mean_control).sum()
-
+    if mmd.isnan():
+        mmd = torch.tensor(0)
     return mmd
 
 
@@ -306,6 +308,7 @@ def ihdp_data_prep():
                     'tex':"17",
                     'was':"17"}
     ihdp_data_compressed.columns = ["1","2","3","4","5","6","7","8","9","10","10","10","11","12","13","14","15","16","17","17","17","17","17","17","17","treatment", "y_factual", "y_cfactual","ite"] 
+    print('True_ATE: ', true_ate)
     return ihdp_data_compressed, variable_dict, true_ate
 
 
