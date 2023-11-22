@@ -1,9 +1,8 @@
-# alpha: 10000000
-alpha: 0
+alpha: 10000000
 epochs: 1000
 gamma: 0.97
 ipm_type: mmd_lin
-lr: 0.001
+lr: 0.0001
 outnet_dropout: 0.145
 outnet_hidden_dim: 32
 outnet_num_layers: 3

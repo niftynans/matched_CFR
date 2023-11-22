@@ -12,8 +12,10 @@ from scipy.special import expit, softmax
 from sklearn.preprocessing import MinMaxScaler    
 from torch.utils.data import Dataset
 from sklearn.metrics import mean_squared_error
+from collections import Counter
 
-
+BATCH_SIZE = 50
+# 76 (goes to 750 epochs), 72 (Best value: epoch 544)
 def torch_fix_seed(seed=0):
     # Python random
     random.seed(seed)
@@ -27,7 +29,7 @@ def torch_fix_seed(seed=0):
 
 
 class TD_DataSet(Dataset):
-    def __init__(self, x, y, z, batch_size = 16):
+    def __init__(self, x, y, z, batch_size = BATCH_SIZE):
         self.x = x
         self.y = y
         self.z = z
@@ -40,7 +42,7 @@ class TD_DataSet(Dataset):
         self.domains = domains
         self.targets = y
         self.train_data = x
-        self.batch_size = 16
+        self.batch_size = BATCH_SIZE
 
     def reset_batch(self):
         """Reset batch indices for each domain."""
@@ -81,15 +83,16 @@ def fetch_sample_data(random_state=0, test_size=0.15, StandardScaler=False, data
     if dataset == 'jobs':
         if os.path.isfile(data_path):
             df = pd.read_csv(data_path)
-            print(df.columns)
             a = randrange(1, df.shape[1]/5)
-            print(a)
             feats = []
             for i in range(a):
                 feats.append(randrange(df.shape[1]))
             feats = list(set(feats))
-            print(df.columns[feats])
             # df = df.drop(columns=df.columns[feats])
+            x_t = df['age'].values.reshape(len(df['age']),1)
+            number_environments = 3
+            df['e_1'] = get_environments(x_t,df['treat'].to_numpy().reshape(-1,1),0, number_environments)
+            # print(Counter(df['e_1'].values))
 
         else:
             RCT_DATA = "http://www.nber.org/~rdehejia/data/nsw_dw.dta"
@@ -129,16 +132,21 @@ def fetch_sample_data(random_state=0, test_size=0.15, StandardScaler=False, data
         y_test = torch.FloatTensor(y_test.to_numpy())
         t_test = torch.FloatTensor(t_test.to_numpy())
         
-        # print(X_train.size(), y_train.size(), t_train.size())
-        # print(X_test.size(), y_test.size(), t_test.size())
+        dataset = TD_DataSet(X_train, y_train, t_train)
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
+
+        return  dataloader, X_train, y_train, t_train,  X_test, y_test, t_test
+
+        
 
     else:
-        confounding = True
+        confounding = False
         x_t_name = 'birth-weight'
         number_environments = 3
         ihdp_data_compressed, variable_dict, true_ate = ihdp_data_prep()
         x_t = get_x_t(ihdp_data_compressed, variable_dict, x_t_name)
         ihdp_data_compressed['e_1'] = get_environments(x_t,ihdp_data_compressed['treatment'].to_numpy().reshape(-1,1),1, number_environments)
+        # print(Counter(ihdp_data_compressed['e_1'].values))
         ite = ihdp_data_compressed['ite']
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         treatments = ihdp_data_compressed['treatment']        
@@ -163,11 +171,6 @@ def fetch_sample_data(random_state=0, test_size=0.15, StandardScaler=False, data
             random_state=random_state,
             test_size=test_size)
         
-        
-        # scaler = MinMaxScaler()
-        # X_train = scaler.fit_transform(X_train)
-        # X_test = scaler.transform(X_test)
-        
         X_train, y_train = np.array(X_train), np.array(y_train)
         t_train, t_test = np.array(t_train), np.array(t_test)
         X_test, y_test = np.array(X_test), np.array(y_test)
@@ -184,14 +187,10 @@ def fetch_sample_data(random_state=0, test_size=0.15, StandardScaler=False, data
         t_test = torch.FloatTensor(t_test).unsqueeze(1)
         ite_test = torch.FloatTensor(ite_test).unsqueeze(1)
 
-        # print(X_train.size(), y_train.size(), t_train.size())
-        # print(X_test.size(), y_test.size(), t_test.size())
-        
-    dataset = TD_DataSet(X_train, y_train, t_train, ite_train)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=16, shuffle=True, drop_last=True)
-    # Batch_Size: 50. Otherwise, it gives NaN values.
+        dataset = TD_DataSet(X_train, y_train, t_train, ite_train)
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
 
-    return  dataloader, X_train, y_train, t_train, ite_train, X_test, y_test, t_test, ite_test
+        return  dataloader, X_train, y_train, t_train, ite_train, X_test, y_test, t_test, ite_test
 
 
 def mmd_rbf(Xt, Xc, p, sig=0.1):
@@ -207,17 +206,12 @@ def mmd_rbf(Xt, Xc, p, sig=0.1):
     mmd += p ** 2 / (n * (n-1)) * (Ktt.sum() - n)
     mmd -= 2 * p * (1 - p) / (m * n) * Kct.sum()
     mmd *= 4
-    if mmd.isnan():
-        mmd = torch.tensor(0)
     return mmd
 
 def mmd_lin(Xt, Xc, p):
     mean_treated = torch.mean(Xt)
     mean_control = torch.mean(Xc)
-    
     mmd = torch.square(2.0*p*mean_treated - 2.0*(1.0-p)*mean_control).sum()
-    if mmd.isnan():
-        mmd = torch.tensor(0)
     return mmd
 
 
@@ -308,7 +302,7 @@ def ihdp_data_prep():
                     'tex':"17",
                     'was':"17"}
     ihdp_data_compressed.columns = ["1","2","3","4","5","6","7","8","9","10","10","10","11","12","13","14","15","16","17","17","17","17","17","17","17","treatment", "y_factual", "y_cfactual","ite"] 
-    print('True_ATE: ', true_ate)
+    # print('True_ATE: ', true_ate)
     return ihdp_data_compressed, variable_dict, true_ate
 
 
@@ -320,7 +314,6 @@ def get_x_t(ihdp_data_compressed, variable_dict, x_t_name):
     return x_t
 
 def get_environments(x_t,t,use_t_in_e,number_environments):
-    use_t_in_e = 1
     if use_t_in_e == 0:
         theta = np.concatenate((np.random.uniform(1.0,2.0,(1,1)), np.zeros((1,1)), np.random.uniform(-1.0,-2.0,(1,1))), axis = 1)
         probabilites = softmax(np.dot(x_t, theta)-np.mean(np.dot(x_t, theta), axis = 0), axis = 1)

@@ -41,7 +41,7 @@ parser = argparse.ArgumentParser()
 
 parser = argparse.ArgumentParser(description='Treatment Effect Estimation using Gradient Matching.')
 parser.add_argument('--dataset', type=str, help="Name of dataset: ihdp, jobs", default='ihdp')
-parser.add_argument('--algorithm', type=str, help="Training scheme: fish, erm", default='fish')
+parser.add_argument('--algorithm', type=str, help="Training scheme: fish, erm", default='erm')
 args = parser.parse_args()
 
 @hydra.main(config_path="configs", config_name="experiments.yaml", version_base=None)
@@ -71,7 +71,7 @@ def run_experiment(cfg: DictConfig):
     with mlflow.start_run():
         a = randrange(1, 1000)
         b = randrange(1, 1000)
-        torch_fix_seed(b)
+        torch_fix_seed()
         log_param("alpha", cfg["alpha"])
         log_param("split_outnet", cfg["split_outnet"])
         # log_param("train_test_random", cfg["random_state"])
@@ -81,53 +81,79 @@ def run_experiment(cfg: DictConfig):
             os.mkdir('data')
         except:
             pass
-        (
-            dataloader,
-            X_train,
-            y_train,
-            t_train,
-            ite_train,
-            X_test,
-            y_test,
-            t_test,
-            ite_test
-        ) = fetch_sample_data(
-            random_state=a, test_size=0.25, StandardScaler=cfg["StandardScaler"], data_path=hydra.utils.get_original_cwd() + "/data/sample_data.csv", dataset= args.dataset
-        )
         
-        # fetch_sample_data(
-        #     random_state=cfg["random_state"], test_size=0.25, StandardScaler=cfg["StandardScaler"], data_path=hydra.utils.get_original_cwd() + "/data/sample_data.csv", dataset= args.dataset
-        # )
-        
+        if args.dataset == 'ihdp':
+            (
+                dataloader,
+                X_train,
+                y_train,
+                t_train,
+                ite_train,
+                X_test,
+                y_test,
+                t_test,
+                ite_test
+            ) = fetch_sample_data(
+                random_state=cfg["random_state"], test_size=0.25, StandardScaler=cfg["StandardScaler"], data_path=hydra.utils.get_original_cwd() + "/data/sample_data.csv", dataset= args.dataset
+            )
 
+        else:
+            (
+                dataloader,
+                X_train,
+                y_train,
+                t_train,
+                X_test,
+                y_test,
+                t_test
+            ) = fetch_sample_data(
+                random_state=cfg["random_state"], test_size=0.25, StandardScaler=cfg["StandardScaler"], data_path=hydra.utils.get_original_cwd() + "/data/sample_data.csv", dataset= args.dataset
+            )
+            
+            
         model = CFR(in_dim=X_train.shape[1], out_dim=1, cfg=cfg)
         opt = getattr(optim, 'Adam')
 
-        if args.algorithm == 'fish':
-            for i in range(10):
-                within_result, outof_result, train_mse, ipm_result = model.train_fish(
-                    dataloader, X_train, y_train, t_train, X_test, y_test, t_test, logger, opt, ite_train, ite_test, i)
-                
-        else:
-            for i in range(10):
-                within_result, outof_result, train_mse, ipm_result = model.fit(
-                dataloader, X_train, y_train, t_train, X_test, y_test, t_test, logger, ite_train, ite_test, i)
+        if args.dataset == 'jobs':
+            if args.algorithm == 'fish':
+                    for i in range(1):
+                        within_result, outof_result, train_mse, ipm_result = model.train_fish(
+                            dataloader, X_train, y_train, t_train, X_test, y_test, t_test, logger, opt, i, meta_step = 2)
+                        
+            else:
+                for i in range(1):
+                    within_result, outof_result, train_mse, ipm_result = model.fit(
+                    dataloader, X_train, y_train, t_train, X_test, y_test, t_test, logger, i)
     
-        within_ipm = ipm_scores(model, X_train, t_train, sig=0.1)
-        outof_ipm = ipm_scores(model, X_test, t_test, sig=0.1)
+        elif args.dataset == 'ihdp':
+            if args.algorithm == 'fish':
+                for i in range(1):
+                    within_result, outof_result, train_mse, ipm_result = model.train_fish(
+                        dataloader, X_train, y_train, t_train, X_test, y_test, t_test, logger, opt, i, ite_train, ite_test)
+                    
+            else:
+                for i in range(1):
+                    within_result, outof_result, train_mse, ipm_result = model.fit(
+                    dataloader, X_train, y_train, t_train, X_test, y_test, t_test, logger, i, ite_train, ite_test)
+    
+        else:
+            print('Not Implemented.')
         
-        log_param("within_IPM_pre", within_ipm["ipm_lin_before"])
-        log_param("outof_IPM_pre", outof_ipm["ipm_lin_before"])
+        # within_ipm = ipm_scores(model, X_train, t_train, sig=0.1)
+        # outof_ipm = ipm_scores(model, X_test, t_test, sig=0.1)
+        
+        # log_param("within_IPM_pre", within_ipm["ipm_lin_before"])
+        # log_param("outof_IPM_pre", outof_ipm["ipm_lin_before"])
 
-        log_metric("within_ATT", within_result["ATT"])
-        log_metric("within_ATTerror", np.abs(within_result["ATT"] - 1676.3426))
-        log_metric("within_RMSE", within_result["RMSE"])
-        log_metric("within_IPM", within_ipm["ipm_lin"])
+        # log_metric("within_ATT", within_result["ATT"])
+        # log_metric("within_ATTerror", np.abs(within_result["ATT"] - 1676.3426))
+        # log_metric("within_RMSE", within_result["RMSE"])
+        # log_metric("within_IPM", within_ipm["ipm_lin"])
 
-        log_metric("outof_ATT", outof_result["ATT"])
-        log_metric("outof_ATTerror", np.abs(outof_result["ATT"] - 1676.3426))
-        log_metric("outof_RMSE", outof_result["RMSE"])
-        log_metric("outof_IPM", outof_ipm["ipm_lin"])            
+        # log_metric("outof_ATT", outof_result["ATT"])
+        # log_metric("outof_ATTerror", np.abs(outof_result["ATT"] - 1676.3426))
+        # log_metric("outof_RMSE", outof_result["RMSE"])
+        # log_metric("outof_IPM", outof_ipm["ipm_lin"])            
 
 if __name__ == "__main__":
     run_experiment()
