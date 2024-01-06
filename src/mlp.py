@@ -22,7 +22,6 @@ class MLP(nn.Module):
         self.out_dim = out_dim
         self.activation = activation
         self.dropout = dropout
-
         nonlin = True
         if self.activation is None:
             nonlin = False
@@ -37,9 +36,7 @@ class MLP(nn.Module):
                 )
             )
         layers.extend(self._layer(hidden_dim, out_dim, False))
-
         self.regression = nn.Sequential(*layers)
-        # init
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 nn.init.kaiming_uniform_(m.weight, a=math.sqrt(5))
