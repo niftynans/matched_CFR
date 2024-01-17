@@ -108,9 +108,12 @@ def get_score(model, x_test, y_test, t_test, ite = None):
     _att = np.mean(_cate_t[t_idx].to("cpu").detach().numpy().copy())
     _atc = np.mean(_cate_c[c_idx].to("cpu").detach().numpy().copy())
     
-    att_err = np.abs((_att - _ate)/(_att + _ate))
-    atc_err = np.abs((_atc - _ate)/(_atc + _ate))
-    
+    threshold = np.mean(thresh.detach().numpy().copy())
+
+    # att_err = np.abs((_att - threshold) / (_att+ threshold))
+    att_err = np.abs(_att - 1676.3426) / (_att + 1676.3426)
+    atc_err = np.abs((_atc - threshold) / (_atc + threshold))
+
     if ite is not None:        
         return {"ATE": _ate, "ATT": _att, "RMSE": np.sqrt(mse), "PEHE": pehe}
     
@@ -125,7 +128,7 @@ class Base(nn.Module):
         self.mse = mean_squared_error
 
     def get_ipm(self):
-        dataloader = fetch_sample_data(dataset='ihdp', bs = 32)[0]
+        dataloader = fetch_sample_data(dataset='ihdp', bs = 128)[0]
         for (x, y, z) in dataloader:
             x = x.to(device=torch.device("cpu"))
             y = y.to(device=torch.device("cpu"))
@@ -321,12 +324,12 @@ class Base(nn.Module):
                         outof_result["PEHE"]
                         )
                     )
-        # np.save('results/jobs/TAR/ERM/ERM_ATT_IN_' + str(count), ates_in)
-        # np.save('results/jobs/TAR/ERM/ERM_ATC_IN_' + str(count), pehe_in)
-        # np.save('results/jobs/TAR/ERM/ERM_ATT_OUT_' + str(count), ates_out)
-        # np.save('results/jobs/TAR/ERM/ERM_ATC_OUT_' + str(count), pehe_out)
-        # np.save('results/jobs/TAR/ERM/ERM_RMSE_IN_' + str(count), rmse_in)
-        # np.save('results/jobs/TAR/ERM/ERM_RMSE_OUT_' + str(count), rmse_out)
+        # np.save('results_new/ihdp/CFR_ERM/CFR_ERM_ATT_IN_' + str(count), ates_in)
+        # np.save('results_new/ihdp/CFR_ERM/CFR_ERM_ATC_IN_' + str(count), pehe_in)
+        # np.save('results_new/ihdp/CFR_ERM/CFR_ERM_ATT_OUT_' + str(count), ates_out)
+        # np.save('results_new/ihdp/CFR_ERM/CFR_ERM_ATC_OUT_' + str(count), pehe_out)
+        # np.save('results_new/ihdp/CFR_ERM/CFR_ERM_RMSE_IN_' + str(count), rmse_in)
+        # np.save('results_new/ihdp/CFR_ERM/CFR_ERM_RMSE_OUT_' + str(count), rmse_out)
 
         return within_result, outof_result, losses, ipm_result
 
@@ -345,6 +348,7 @@ class Base(nn.Module):
         ite_test = None,
         meta_step = 3
         ):
+        print("In Train Fish Now...")
         losses = []
         ipm_result = []
         epoch_losses = []
@@ -356,12 +360,12 @@ class Base(nn.Module):
         rmse_out = []
         if ite_train is None:
             logger.debug("                                     FISH Training           ")
-            logger.debug("                          within sample,      out of sample")
-            logger.debug("           [Train MSE, IPM], [RMSE, ATT, ATE, ATC], [RMSE, ATT, ATE, ATC]")
+            # logger.debug("                          within sample,      out of sample")
+            # logger.debug("           [Train MSE, IPM], [RMSE, ATT, ATE, ATC], [RMSE, ATT, ATE, ATC]")
         else:
             logger.debug("                                     FISH Training           ")
-            logger.debug("                          within sample,      out of sample")
-            logger.debug("           [Train MSE, IPM], [RMSE, ATT, ATE, PEHE], [RMSE, ATT, ATE, PEHE]")
+            # logger.debug("                          within sample,      out of sample")
+            # logger.debug("           [Train MSE, IPM], [RMSE, ATT, ATE, PEHE], [RMSE, ATT, ATE, PEHE]")
         self.train()
         ipm = -1
 
@@ -384,7 +388,6 @@ class Base(nn.Module):
                 if opt_inner_pre is not None:
                     opt_inner.load_state_dict(opt_inner_pre)
                 opt_inner.param_groups[0]['weight_decay'] = 0.5
-                
                 model_inner.zero_grad()
                 
                 for domain in domains:
@@ -395,272 +398,35 @@ class Base(nn.Module):
                     e = data[3].to(device=torch.device("cpu")).unsqueeze(1) 
 
                     x_rep = model_inner.repnet(x)
-                    
-                    _t_id = np.where((z.cpu().detach().numpy() == 1).all(axis=1))[0]
-                    _c_id = np.where((z.cpu().detach().numpy() == 0).all(axis=1))[0]
-
-                    if self.cfg["split_outnet"]:
-                        y_hat_treated = model_inner.outnet_treated(x_rep[_t_id])
-                        y_hat_control = model_inner.outnet_control(x_rep[_c_id])
-
-                        _index = np.argsort(np.concatenate([_t_id, _c_id], 0))
-                        y_hat = torch.cat([y_hat_treated, y_hat_control])[_index]
-                    
-                    else:
-                        y_hat = model_inner.outnet(torch.cat((x_rep, z), 1))
-                        
+                    y_hat = model_inner.outnet(torch.cat((x_rep, z), 1))
+    
                     criterion = nn.MSELoss(reduction='none')
                     loss = criterion(y_hat, y.reshape([-1,1]))
-
-                    p_t = np.mean(z.cpu().detach().numpy())
-                    w_t = z/(2*p_t)
-                    w_c = (1-z)/(2*1-p_t)
-                    sample_weight = w_t + w_c
-                    if (p_t ==1) or (p_t ==0):
-                        sample_weight = 1
-                    
-                    loss =torch.mean((loss * sample_weight))
-                    
-                    # if self.cfg["alpha"] > 0.0:    
-                    #     if self.cfg["ipm_type"] == "mmd_rbf":
-                    #         ipm = mmd_rbf(
-                    #                 x_rep[_t_id],
-                    #                 x_rep[_c_id],
-                    #                 p=len(_t_id) / (len(_t_id) + len(_c_id)),
-                    #                 sig=self.cfg["sig"],
-                    #             )
-                    #     elif self.cfg["ipm_type"] == "mmd_lin":
-                    #         ipm = mmd_lin(
-                    #             x_rep[_t_id],
-                    #             x_rep[_c_id],
-                    #             p=len(_t_id) / (len(_t_id) + len(_c_id))
-                    #         )
-                    #     else:
-                    #         logger.debug(f'{self.cfg["ipm_type"]} : TODO!!! Not implemented yet!')
-                    #         sys.exit()
-                    #     loss += ipm * self.cfg["alpha"]
-                        # epoch_ipm.append(ipm.cpu().detach().numpy())
-                    mse = mean_squared_error(
-                            y_hat.detach().cpu().numpy(),
-                            y.reshape([-1, 1]).detach().cpu().numpy(),
-                        )
+                    loss = torch.mean(loss)
                     loss.backward()
                     opt_inner.step()
-                    epoch_loss += mse * y.shape[0]
+                    epoch_loss += loss * y.shape[0]
                     n += y.shape[0]
                     
                 epoch_loss = epoch_loss / n
                 losses.append(epoch_loss)
                 opt_inner_pre = opt_inner.state_dict()   
-                if self.cfg["alpha"] > 0.0:
-                    ipm, ipm_gradients = self.get_ipm()
-                    meta_weights = fish_step(meta_weights=self.state_dict(),
-                                            inner_weights=model_inner.state_dict(), 
-                                            ipm_grad= ipm_gradients,
-                                            meta_lr=0.6 / meta_step,
-                                            alpha= self.cfg["alpha"])    
-                else:
-                    meta_weights = fish_step(meta_weights=self.state_dict(),
-                                            inner_weights=model_inner.state_dict(),
-                                            meta_lr=0.6 / meta_step,
-                                            alpha= self.cfg["alpha"])    
-                    
-                self.reset_weights(meta_weights)
-
+                
                 for domain in domains:
                     dataloader.dataset.batches_left[domain] = \
                         dataloader.dataset.batches_left[domain] - 1 \
                         if dataloader.dataset.batches_left[domain] > 1 else 1
-            
-            if epoch % 1 == 0:
-                with torch.no_grad():
-                    within_result = get_score(self, x_train, y_train, t_train, ite_train)
-                    outof_result = get_score(self, x_test, y_test, t_test, ite_test)                    
-                    
-                    if ite_train is None:
-                        epoch_losses.append(epoch_loss)
-                        ates_in.append(within_result["ATT"])
-                        pehe_in.append(within_result["ATC"])
-                        ates_out.append(outof_result["ATT"])
-                        pehe_out.append(outof_result["ATC"])
-                        rmse_in.append(within_result["RMSE"])
-                        rmse_out.append(outof_result["RMSE"])
-                    else:
-                        epoch_losses.append(epoch_loss)
-                        ates_in.append(within_result["ATE"])
-                        pehe_in.append(within_result["PEHE"])
-                        ates_out.append(outof_result["ATE"])
-                        pehe_out.append(outof_result["PEHE"])
-                        rmse_in.append(within_result["RMSE"])
-                        rmse_out.append(outof_result["RMSE"])
 
-                if ite_train is None:
-                    logger.debug(
-                    "[Epoch: %d] [%.3f, %.3f], [%.3f, %.3f, %.3f, %.3f], [%.3f, %.3f, %.3f, %.3f] "
-                    % (
-                        epoch,
-                        epoch_loss,
-                        ipm if self.cfg["alpha"] > 0 else -1,
-                        within_result["RMSE"],
-                        within_result["ATT"],
-                        within_result["ATE"],
-                        within_result["ATC"],
-                        outof_result["RMSE"],
-                        outof_result["ATT"],
-                        outof_result["ATE"],
-                        outof_result["ATC"]
-                        )
-                    )
-                else:
-                    logger.debug(
-                    "[Epoch: %d] [%.3f, %.3f], [%.3f, %.3f, %.3f, %.3f], [%.3f, %.3f, %.3f, %.3f] "
-                    % (
-                        epoch,
-                        epoch_loss,
-                        ipm if self.cfg["alpha"] > 0 else -1,
-                        within_result["RMSE"],
-                        within_result["ATT"],
-                        within_result["ATE"],
-                        within_result["PEHE"],
-                        outof_result["RMSE"],
-                        outof_result["ATT"],
-                        outof_result["ATE"],
-                        outof_result["PEHE"]
-                        )
-                    )
-        
-        # np.save('results_new/ihdp/CFR/FISH_06/FISH_ATE_IN_' + str(count), ates_in)
-        # np.save('results_new/ihdp/CFR/FISH_06/FISH_PEHE_IN_' + str(count), pehe_in)
-        # np.save('results_new/ihdp/CFR/FISH_06/FISH_ATE_OUT_' + str(count), ates_out)
-        # np.save('results_new/ihdp/CFR/FISH_06/FISH_PEHE_OUT_' + str(count), pehe_out)
-        # np.save('results_new/ihdp/CFR/FISH_06/FISH_RMSE_IN_' + str(count), rmse_in)
-        # np.save('results_new/ihdp/CFR/FISH_06/FISH_RMSE_OUT_' + str(count), rmse_out)
-
-        return within_result, outof_result, losses, ipm_result
+                meta_weights = fish_step(meta_weights=self.state_dict(),
+                                        inner_weights=model_inner.state_dict(),
+                                        meta_lr=0.50 / meta_step,
+                                        alpha= self.cfg["alpha"])    
                 
+                self.reset_weights(meta_weights)
+        print("### Calling Fit ###")
+        within_result, outof_result, losses, ipm_result = self.fit(dataloader, x_train, y_train, t_train, x_test, y_test, t_test, logger, count, ite_train, ite_test)
+        return within_result, outof_result, losses, ipm_result
 
-    def train_tlearner(self,
-        dataloader,
-        x_train,
-        y_train,
-        t_train,
-        ite_train,
-        x_test,
-        y_test,
-        t_test,
-        ite_test,
-        opt,
-        count
-    ):
-        algo = 'fish' # Or ERM
-        losses = [] 
-        ates = []
-        pehe = []
-        
-        self.train()
-        if algo == 'fish':
-            for epoch in range(self.cfg["epochs"]):
-                epoch_loss = 0
-                n = 0
-                dataloader.dataset.reset_batch()
-                i = 0
-                opt_inner_pre = None
-                while sum([l > 1 for l in dataloader.dataset.batches_left.values()]) >= 3: 
-                    i += 1
-                    domains = sample_domains(dataloader, 3).tolist()
-                    model_inner = deepcopy(self)
-                    model_inner.train()
-                    opt_inner = opt(model_inner.parameters(), lr = 0.001)
-                    if opt_inner_pre is not None:
-                        opt_inner.load_state_dict(opt_inner_pre)
-                    for domain in domains:
-                        data = dataloader.dataset.get_batch(domain)
-                        x = data[0].to(device=torch.device("cpu"))
-                        y = data[1].to(device=torch.device("cpu"))
-                        z = data[2].to(device=torch.device("cpu")) 
-                        e = data[3].to(device=torch.device("cpu")).unsqueeze(1) 
-                        opt_inner.zero_grad()
-                        x_rep = self.repnet(x)
-                        y_hat = self.outnet(torch.cat((x_rep, z), 1))    
-                        criterion = nn.MSELoss(reduction='none')
-                        loss = criterion(y_hat, y.reshape([-1,1]))
-                        p_t = np.mean(z.cpu().detach().numpy())
-                        w_t = z/(2*p_t)
-                        w_c = (1-z)/(2*1-p_t)
-                        sample_weight = w_t + w_c
-                        if (p_t ==1) or (p_t ==0):
-                            sample_weight = 1
-                        loss =torch.mean((loss * sample_weight))
-                        loss.backward()
-                        opt_inner.step()    
-                        mse = mean_squared_error(y_hat.detach().cpu().numpy(),y.reshape([-1, 1]).detach().cpu().numpy())
-                        epoch_loss += mse * y.shape[0]
-                        n += y.shape[0]
-                    StepLR(opt_inner, step_size=10, gamma=0.97)
-                    epoch_loss = epoch_loss / (n)
-                    losses.append(epoch_loss)
-                    opt_inner_pre = opt_inner.state_dict()
-                    meta_weights = self.fish_step(meta_weights=self.state_dict(),
-                                            inner_weights=model_inner.state_dict(),
-                                            meta_lr=0.015 / 3)    
-                    self.reset_weights(meta_weights)
-                    for domain in domains:
-                        dataloader.dataset.batches_left[domain] = \
-                            dataloader.dataset.batches_left[domain] - 1 \
-                            if dataloader.dataset.batches_left[domain] > 1 else 1
-                if epoch % 1 == 0:
-                    with torch.no_grad():
-                        within_result = get_score(self, x_train, y_train, t_train, ite_train, t_learner=True)
-                        outof_result = get_score(self, x_test, y_test, t_test, ite_test, t_learner=True)
-                        ates.append(outof_result["ATE"])
-                        pehe.append(outof_result["PEHE"])
-            np.save('TLearner_FISH_ATE_' + str(count), ates)
-            np.save('TLearner_FISH_PEHE_' + str(count), pehe)
-    
-                        
-        else:
-            for epoch in range(self.cfg["epochs"]):
-                epoch_loss = 0
-                epoch_ipm = []
-                n = 0
-                for (x, y, z) in dataloader:
-                    x = x.to(device=torch.device("cpu"))
-                    y = y.to(device=torch.device("cpu"))
-                    z = z.to(device=torch.device("cpu"))
-                    self.optimizer.zero_grad()
-                    x_rep = self.repnet(x)
-                    y_hat = self.outnet(torch.cat((x_rep, z), 1))
-                    loss = self.criterion(y_hat, y.reshape([-1, 1]))
-                    p_t = np.mean(z.cpu().detach().numpy())
-                    w_t = z/(2*p_t)
-                    w_c = (1-z)/(2*1-p_t)
-                    sample_weight = w_t + w_c
-                    if (p_t ==1) or (p_t ==0):
-                        sample_weight = 1
-                    loss =torch.mean((loss * sample_weight))                        
-                    mse = self.mse(
-                            y_hat.detach().cpu().numpy(),
-                            y.reshape([-1, 1]).detach().cpu().numpy(),
-                        )
-                    loss.backward()
-                    self.optimizer.step()
-                    epoch_loss += mse * y.shape[0]
-                    n += y.shape[0]
-                self.scheduler.step()
-                epoch_loss = epoch_loss / n
-                losses.append(epoch_loss)
-                if epoch % 1 == 0:
-                    with torch.no_grad():
-                        
-                        within_result = get_score(self, x_train, y_train, t_train, ite_train, t_learner=True)
-                        outof_result = get_score(self, x_test, y_test, t_test, ite_test, t_learner=True)
-                        ates.append(outof_result["ATE"])
-                        pehe.append(outof_result["PEHE"])
-            np.save('TLearner_ERM_ATE_' + str(count), ates)
-            np.save('TLearner_ERM_PEHE_' + str(count), pehe)    
-    
-        return within_result, outof_result
-        
 class CFR(Base):
     def __init__(self, in_dim, out_dim, cfg={}):
         super().__init__(cfg)
@@ -673,31 +439,36 @@ class CFR(Base):
             dropout=cfg["repnet_dropout"],
         )
 
-        if cfg["split_outnet"]:
-            self.outnet_treated = MLP(
-                in_dim=cfg["repnet_out_dim"], out_dim=out_dim, num_layers=cfg["outnet_num_layers"], hidden_dim=cfg["outnet_hidden_dim"], dropout=cfg["outnet_dropout"]
-            )
-            self.outnet_control = MLP(
-                in_dim=cfg["repnet_out_dim"], out_dim=out_dim, num_layers=cfg["outnet_num_layers"], hidden_dim=cfg["outnet_hidden_dim"], dropout=cfg["outnet_dropout"]
-            )
-            self.params = (
-                list(self.repnet.parameters())
-                + list(self.outnet_treated.parameters())
-                + list(self.outnet_control.parameters())
-            )
-        else:
-            self.outnet = MLP(
-                in_dim=cfg["repnet_out_dim"] + 1, out_dim=out_dim, num_layers=cfg["outnet_num_layers"], hidden_dim=cfg["outnet_hidden_dim"], dropout=cfg["outnet_dropout"]
-            )
+        # if cfg["split_outnet"]:
+        self.outnet_treated = MLP(
+            in_dim=cfg["repnet_out_dim"], out_dim=out_dim, num_layers=cfg["outnet_num_layers"], hidden_dim=cfg["outnet_hidden_dim"], dropout=cfg["outnet_dropout"]
+        )
+        self.outnet_control = MLP(
+            in_dim=cfg["repnet_out_dim"], out_dim=out_dim, num_layers=cfg["outnet_num_layers"], hidden_dim=cfg["outnet_hidden_dim"], dropout=cfg["outnet_dropout"]
+        )
+        self.params = (
+            list(self.repnet.parameters())
+            + list(self.outnet_treated.parameters())
+            + list(self.outnet_control.parameters())
+        )
+        # else:
+        self.outnet = MLP(
+            in_dim=cfg["repnet_out_dim"] + 1, out_dim=out_dim, num_layers=cfg["outnet_num_layers"], hidden_dim=cfg["outnet_hidden_dim"], dropout=cfg["outnet_dropout"]
+        )
 
-            self.params = (
-                list(self.repnet.parameters())
-                + list(self.outnet.parameters())
-            )
+        self.params_outnet = (
+            list(self.repnet.parameters())
+            + list(self.outnet.parameters())
+        )
 
         self.optimizer = optim.Adam(
             params=self.params, lr=cfg["lr"], weight_decay=cfg["wd"]
         )
+        
+        self.optimizer_outnet = optim.Adam(
+            params=self.params_outnet, lr=cfg["lr"], weight_decay=cfg["wd"]
+        )
+        
         self.scheduler = StepLR(self.optimizer, step_size=100, gamma=cfg["gamma"])
 
     def forward(self, x, z):
