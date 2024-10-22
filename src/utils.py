@@ -32,10 +32,11 @@ def torch_fix_seed(seed=0):
 
 
 class TD_DataSet(Dataset):
-    def __init__(self, x, y, z, batch_size = BATCH_SIZE):
+    def __init__(self, x, y, z, ite=None, batch_size = BATCH_SIZE):
         self.x = x
         self.y = y
         self.z = z
+        self.ite = ite
         domains = x[:,-1].clone().detach()
         indices = []
         for i in range(x.size()[0]):
@@ -175,16 +176,28 @@ def fetch_sample_data(random_state=0, test_size=0.15, StandardScaler=False, data
             random_state=random_state,
             test_size=test_size)
         
+        validation_size = 0.2  
+
+        X_train, X_val, y_train, y_val, t_train, t_val, ite_train, ite_val = train_test_split(
+            X_train, y_train, t_train, ite_train, 
+            test_size=validation_size, 
+            random_state=random_state)
+
         X_train, y_train = np.array(X_train), np.array(y_train)
-        t_train, t_test = np.array(t_train), np.array(t_test)
+        X_val, y_val = np.array(X_val), np.array(y_val)
+        t_train, t_test, t_val = np.array(t_train), np.array(t_test), np.array(t_val)
         X_test, y_test = np.array(X_test), np.array(y_test)
-        ite_train, ite_test = np.array(ite_train), np.array(ite_test)
-        
+        ite_train, ite_test, ite_val = np.array(ite_train), np.array(ite_test), np.array(ite_val)
         
         X_train = torch.FloatTensor(X_train)
         y_train = torch.FloatTensor(y_train).unsqueeze(1)
         t_train = torch.FloatTensor(t_train).unsqueeze(1)
         ite_train = torch.FloatTensor(ite_train).unsqueeze(1)
+
+        X_val = torch.FloatTensor(X_val)
+        y_val = torch.FloatTensor(y_val).unsqueeze(1)
+        t_val = torch.FloatTensor(t_val).unsqueeze(1)
+        ite_val = torch.FloatTensor(ite_val).unsqueeze(1)
 
         X_test = torch.FloatTensor(X_test)
         y_test = torch.FloatTensor(y_test).unsqueeze(1)
@@ -192,15 +205,17 @@ def fetch_sample_data(random_state=0, test_size=0.15, StandardScaler=False, data
         ite_test = torch.FloatTensor(ite_test).unsqueeze(1)
 
         dataset = TD_DataSet(X_train, y_train, t_train, ite_train)
+        val_data = TD_DataSet(X_val, y_val, t_val, ite_val)
         if bs is None:
             dataloader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
+            val_loader = torch.utils.data.DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
         else:
             dataloader = torch.utils.data.DataLoader(dataset, batch_size= bs, shuffle=True, drop_last=True)
-            
-        return  dataloader, X_train, y_train, t_train, ite_train, X_test, y_test, t_test, ite_test
+            val_loader = torch.utils.data.DataLoader(val_data, batch_size=bs, shuffle=True, drop_last=True)
+
+        return  dataloader, val_loader, X_train, y_train, t_train, ite_train, X_val, y_val, t_val, ite_val, X_test, y_test, t_test, ite_test
 
     else:
-        confounding = True
         x_t_name = 'mage'
         number_environments = 3
         cattaneo_data_compressed, variable_dict = get_cattaneo_compressed()
@@ -210,28 +225,20 @@ def fetch_sample_data(random_state=0, test_size=0.15, StandardScaler=False, data
         treatments = cattaneo_data_compressed['treatment']        
         torch_data = cattaneo_data_compressed.drop(columns = ['y', 'treatment'])
         torch_data = torch_data.drop(columns = [variable_dict[x_t_name]])
-        if confounding:
-            a = randrange(1, int(torch_data.shape[1]/5)+3)
-            feats = []
-            for i in range(a):
-                feats.append(randrange(6))
-            feats = list(set(feats))
-            torch_data = torch_data.drop(columns=torch_data.columns[feats])
 
         num_features = torch_data.shape[1]
         torch_labels = cattaneo_data_compressed['y']
-        
+        torch_data = cattaneo_data_compressed.drop(columns = ['y', 'treatment', '5', '6', '7', '8', '9', '12', '15', '1'])
         X_train, X_test, y_train, y_test, t_train, t_test = train_test_split(
             torch_data,
             torch_labels,
             treatments,
             random_state=random_state,
             test_size=test_size)
-        
+
         X_train, y_train = np.array(X_train), np.array(y_train)
         t_train, t_test = np.array(t_train), np.array(t_test)
         X_test, y_test = np.array(X_test), np.array(y_test)
-        
         
         X_train = torch.FloatTensor(X_train)
         y_train = torch.FloatTensor(y_train).unsqueeze(1)
@@ -402,25 +409,25 @@ def get_cattaneo_compressed():
 	cols_list = cattaneo_norm.columns.to_list()
 	cattaneo_norm = cattaneo_norm[cols_list[7:14] + cols_list[17:19] + cols_list[1:7] + cols_list[15:17] + cols_list[19:] + cols_list[14:15]+ cols_list[0:1]]
 	cattaneo_norm.columns = cattaneo_norm.columns.to_list()[:-2] + ['treatment','y']
-	variable_dict = {'mage':"1",
-					'medu':"2",
-					'fage': "3",
-					'fedu': "4",
+	variable_dict = {'mage':"1", #yes
+					'medu':"2", #yes
+					'fage': "3", #yes
+					'fedu': "4", #yes
 					'nprenatal':"5",
-					'prenatal1':"6",
-					'prenatal':"7",
-					'monthslb':"8",
+					'prenatal1':"6", #yes
+					'prenatal':"7",#yes
+					'monthslb':"8", #yes
 					'order':"9",
-					'birthmonth':"10",
-					'mmarried':"11",
+					'birthmonth':"10", #yes
+					'mmarried':"11", #yes
 					'mhisp':"12",
-					'mrace':"13",
-					'frace':"14",
+					'mrace':"13", #yes
+					'frace':"14", #yes
 					'fhisp':"15",
 					'foreign':"16",
-					'alcohol':"17",
-					'deadkids':"18",
-					'fbaby':"19"}
+					'alcohol':"17", #yes
+					'deadkids':"18", #yes
+					'fbaby':"19"} #yes
 	cattaneo_compressed = cattaneo_norm.copy()
 	cattaneo_compressed.columns = list(variable_dict.values()) + ['treatment','y']
 	cat_columns = cattaneo_compressed.select_dtypes(['category']).columns

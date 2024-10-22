@@ -39,8 +39,8 @@ from pathlib import Path
 parser = argparse.ArgumentParser()
 
 parser = argparse.ArgumentParser(description='Treatment Effect Estimation using Gradient Matching.')
-parser.add_argument('--dataset', type=str, help="Name of dataset: ihdp, jobs, cattaneo", default='ihdp')
-parser.add_argument('--algorithm', type=str, help="Training scheme: fish, erm", default='fish')
+parser.add_argument('--dataset', type=str, help="Name of dataset: ihdp, jobs, cattaneo", default='cattaneo')
+parser.add_argument('--algorithm', type=str, help="Training scheme: fish, erm", default='erm')
 args = parser.parse_args()
 
 @hydra.main(config_path="configs", config_name="experiments.yaml", version_base=None)
@@ -81,10 +81,15 @@ def run_experiment(cfg: DictConfig):
         if args.dataset == 'ihdp':
             (
                 dataloader,
+                val_loader,
                 X_train,
                 y_train,
                 t_train,
                 ite_train,
+                X_val,
+                y_val,
+                t_val,
+                ite_val,
                 X_test,
                 y_test,
                 t_test,
@@ -105,7 +110,6 @@ def run_experiment(cfg: DictConfig):
             ) = fetch_sample_data(
                 random_state=cfg["random_state"], test_size=0.25, StandardScaler=cfg["StandardScaler"], data_path=hydra.utils.get_original_cwd() + "/data/sample_data.csv", dataset= args.dataset
             )
-            
         model = CFR(in_dim=X_train.shape[1], out_dim=1, cfg=cfg)
         opt = getattr(optim, 'Adam')
 
@@ -124,7 +128,10 @@ def run_experiment(cfg: DictConfig):
             if args.algorithm == 'fish':
                 for i in range(1):
                     within_result, outof_result, train_mse, ipm_result = model.train_fish(
-                        dataloader, X_train, y_train, t_train, X_test, y_test, t_test, logger, opt, i, ite_train, ite_test)
+                        dataloader,  X_train, y_train, t_train, 
+                        X_test, y_test, t_test, logger, opt, i,
+                        val_loader, X_val, y_val, t_val, 
+                        ite_train, ite_val, ite_test)
                     
             else:
                 for i in range(1):

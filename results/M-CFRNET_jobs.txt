@@ -1,0 +1,3 @@
+in-ATT :  1340.9071599999997 '\pm' 207.2360360212152 
+out-ATT : 759.7162699999999 '\pm' 242.07953642160896 
+NOTE : These errors are not normalised as shown in the paper.

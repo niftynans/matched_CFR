@@ -14,6 +14,7 @@ class MLP(nn.Module):
         out_dim,
         activation=nn.ReLU(inplace=True),
         dropout=0.2,
+        for_fish = False
     ):
         super().__init__()
         self.in_dim = in_dim

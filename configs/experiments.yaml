@@ -1,12 +1,11 @@
-# alpha: 100000
+alpha: 100000
 # alpha: 0
 epochs: 250
 gamma: 0.97
 ipm_type: mmd_lin
 lr: 0.0001
-# lr: 0.001 
 outnet_dropout: 0.145
-outnet_hidden_dim: 32
+outnet_hidden_dim: 48
 outnet_num_layers: 3
 repnet_dropout: 0.145
 repnet_hidden_dim: 48
@@ -16,4 +15,4 @@ sig: 0.1
 split_outnet: True
 wd: 0.5
 StandardScaler: False
-random_state: 0
+random_state: 100
