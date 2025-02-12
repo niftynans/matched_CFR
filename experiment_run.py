@@ -40,7 +40,7 @@ parser = argparse.ArgumentParser()
 
 parser = argparse.ArgumentParser(description='Treatment Effect Estimation using Gradient Matching.')
 parser.add_argument('--dataset', type=str, help="Name of dataset: ihdp, jobs, cattaneo", default='cattaneo')
-parser.add_argument('--algorithm', type=str, help="Training scheme: fish, erm", default='erm')
+parser.add_argument('--algorithm', type=str, help="Training scheme: fish, erm, fish_alternate, fish_only", default='fish_alternate')
 args = parser.parse_args()
 
 @hydra.main(config_path="configs", config_name="experiments.yaml", version_base=None)
@@ -118,6 +118,15 @@ def run_experiment(cfg: DictConfig):
                     for i in range(1):
                         within_result, outof_result, train_mse, ipm_result = model.train_fish(
                             dataloader, X_train, y_train, t_train, X_test, y_test, t_test, logger, opt, i, meta_step = 3)
+            elif args.algorithm == 'fish_alternate':
+                    for i in range(1):
+                        within_result, outof_result, train_mse, ipm_result = model.train_fish_alternating(
+                            dataloader, X_train, y_train, t_train, X_test, y_test, t_test, logger, opt)
+            
+            elif args.algorithm == 'fish_only':
+                    for i in range(1):
+                        within_result, outof_result, train_mse, ipm_result = model.fish(
+                            dataloader, X_train, y_train, t_train, X_test, y_test, t_test, logger, opt)
                         
             else:
                 for i in range(1):
@@ -132,6 +141,18 @@ def run_experiment(cfg: DictConfig):
                         X_test, y_test, t_test, logger, opt, i,
                         val_loader, X_val, y_val, t_val, 
                         ite_train, ite_val, ite_test)
+            
+            elif args.algorithm == 'fish_alternate':
+                for i in range(1):
+                    within_result, outof_result, train_mse, ipm_result = model.train_fish_alternating(
+                        dataloader,  X_train, y_train, t_train, 
+                        X_test, y_test, t_test, logger, opt, ite_train, ite_test)
+            
+            elif args.algorithm == 'fish_only':
+                for i in range(1):
+                    within_result, outof_result, train_mse, ipm_result = model.fish(
+                        dataloader,  X_train, y_train, t_train, 
+                        X_test, y_test, t_test, logger, opt, ite_train, ite_test)
                     
             else:
                 for i in range(1):
