@@ -39,8 +39,8 @@ from pathlib import Path
 parser = argparse.ArgumentParser()
 
 parser = argparse.ArgumentParser(description='Treatment Effect Estimation using Gradient Matching.')
-parser.add_argument('--dataset', type=str, help="Name of dataset: ihdp, jobs, cattaneo", default='cattaneo')
-parser.add_argument('--algorithm', type=str, help="Training scheme: fish, erm, fish_alternate, fish_only", default='fish_alternate')
+parser.add_argument('--dataset', type=str, help="Name of dataset: ihdp, jobs, cattaneo", default='ihdp')
+parser.add_argument('--algorithm', type=str, help="Training scheme: match, erm, match_alternate, match_only", default='match_alternate')
 args = parser.parse_args()
 
 @hydra.main(config_path="configs", config_name="experiments.yaml", version_base=None)
@@ -114,16 +114,16 @@ def run_experiment(cfg: DictConfig):
         opt = getattr(optim, 'Adam')
 
         if args.dataset == 'jobs' or args.dataset == 'cattaneo':
-            if args.algorithm == 'fish':
+            if args.algorithm == 'match':
                     for i in range(1):
                         within_result, outof_result, train_mse, ipm_result = model.train_fish(
                             dataloader, X_train, y_train, t_train, X_test, y_test, t_test, logger, opt, i, meta_step = 3)
-            elif args.algorithm == 'fish_alternate':
+            elif args.algorithm == 'match_alternate':
                     for i in range(1):
                         within_result, outof_result, train_mse, ipm_result = model.train_fish_alternating(
                             dataloader, X_train, y_train, t_train, X_test, y_test, t_test, logger, opt)
             
-            elif args.algorithm == 'fish_only':
+            elif args.algorithm == 'match_only':
                     for i in range(1):
                         within_result, outof_result, train_mse, ipm_result = model.fish(
                             dataloader, X_train, y_train, t_train, X_test, y_test, t_test, logger, opt)
@@ -134,7 +134,7 @@ def run_experiment(cfg: DictConfig):
                     dataloader, X_train, y_train, t_train, X_test, y_test, t_test, logger, i)
     
         elif args.dataset == 'ihdp':
-            if args.algorithm == 'fish':
+            if args.algorithm == 'match':
                 for i in range(1):
                     within_result, outof_result, train_mse, ipm_result = model.train_fish(
                         dataloader,  X_train, y_train, t_train, 
@@ -142,13 +142,13 @@ def run_experiment(cfg: DictConfig):
                         val_loader, X_val, y_val, t_val, 
                         ite_train, ite_val, ite_test)
             
-            elif args.algorithm == 'fish_alternate':
+            elif args.algorithm == 'match_alternate':
                 for i in range(1):
                     within_result, outof_result, train_mse, ipm_result = model.train_fish_alternating(
                         dataloader,  X_train, y_train, t_train, 
                         X_test, y_test, t_test, logger, opt, ite_train, ite_test)
             
-            elif args.algorithm == 'fish_only':
+            elif args.algorithm == 'match_only':
                 for i in range(1):
                     within_result, outof_result, train_mse, ipm_result = model.fish(
                         dataloader,  X_train, y_train, t_train, 

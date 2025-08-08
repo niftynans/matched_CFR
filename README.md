@@ -1,17 +1,23 @@
 # Matching Based CFR
-### Papers
-- [Shalit et al., 2017] Shalit, Uri, Fredrik D. Johansson, and David Sontag. "Estimating individual treatment effect: generalization bounds and algorithms." International Conference on Machine Learning. PMLR, 2017
-- [Johansson et al., 2016] Johansson, Fredrik, Uri Shalit, and David Sontag. "Learning representations for counterfactual inference." International conference on machine learning. PMLR, 2016.
+### Overview
+This code repository replicates our work as shown in the preprint titled, 'Representation Learning Preserving Ignorability and Covariate Matching for Treatment Effects' where the goal is accurate treatment effect estimation in the presence of hidden confounding as well as selection bias.
 
-The following github repository was used extensively as a reference.
-- [introduction-to-cfr] https://github.com/MasaAsami/introduction_to_CFR
-## Usage
+### Usage
+Firstly, setup the python environment using packages from requirements.txt. Once the environment is setup, you can run the experiments with the following arguments:
 
 ```
-$ python experiment_run.py
+$ python experiment_run.py --dataset = ihdp, jobs, cattaneo --algorithm = match, erm, match_alternate, match_only
+```
+Here, 'match' denotes our method, 'erm' is the empirical risk minimizer, 'match_alternate' is the alternate minimization oracle, and 'match_only' refers to using only the meta learning gradient matching approach (referred to as FISH algorithm in Shi et al, 2021.)
+
+Hyperparameters can be changed in the configs file named 'experiments.yaml' within the 'configs' folder, or directly on the command line. An example of that is given below:
+```
+$ python experiment_run.py -m alpha=0,100000000 split_outnet=True,False
 ```
 
-If you want to change a hyperparameters:
+In order to run the baseline methods, i.e., meta learners like the S-Learner, T-Learner, X-Learner, DA-Learner, and the DR-Learner kindly run the following command:
+
 ```
-$ python experiment_run.py -m alpha=0,0.1,0.01,0.001,0.0001,1,100,10000,100000,1000000,10000000,100000000,1000000000,10000000000,100000000000 split_outnet=True,False
+$ jupyter nbconvert --execute --to baselines.ipynb --inplace baselines.ipynb
 ```
+Or simply run the ipynb file using a jupyter ipykernel.
