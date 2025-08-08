@@ -10,7 +10,7 @@ $ python experiment_run.py --dataset = ihdp, jobs, cattaneo --algorithm = match,
 ```
 Here, 'match' denotes our method, 'erm' is the empirical risk minimizer, 'match_alternate' is the alternate minimization oracle, and 'match_only' refers to using only the meta learning gradient matching approach (referred to as FISH algorithm in Shi et al, 2021.)
 
-Hyperparameters can be changed in the configs file named 'experiments.yaml' within the 'configs' folder, or directly on the command line. An example of that is given below:
+Hyperparameters can be changed in the configs file named 'experiments.yaml' within the 'configs' folder, or directly on the command line. For detailed analysis on the hyperparameters, kindly refer to Section D of the Appendix in the main Preprint. An example of that is given below:
 ```
 $ python experiment_run.py -m alpha=0,100000000 split_outnet=True,False
 ```
